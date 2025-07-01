@@ -6,7 +6,7 @@ import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from datetime import datetime
-from config import get_model_path, get_plot_path, model_exists, plot_exists
+from config import get_model_path, get_plot_path, model_exists, plot_exists, create_ticker_dirs
 
 # --- 0. App Configuration & Title ---
 st.set_page_config(page_title="Stock Price Predictor", layout="wide")
@@ -65,6 +65,9 @@ def train_model(ticker, placeholder):
         if data is None:
             placeholder.error(f"Could not download data for {ticker}. Please check the ticker symbol.")
             return None, None
+
+        # Ensure ticker-specific directories exist
+        create_ticker_dirs(ticker)
 
         feature_data = data[FEATURES].values
         scaler = MinMaxScaler()

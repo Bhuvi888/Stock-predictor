@@ -3,7 +3,7 @@ import os
 # --- Directory Paths ---
 # Use os.path.join for creating platform-independent paths
 # ROOT_DIR is the directory where app.py resides
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 
 MODELS_DIR = os.path.join(ROOT_DIR, "models")
 PLOTS_DIR = os.path.join(ROOT_DIR, "plots")
