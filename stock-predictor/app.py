@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add the current directory to the Python path to allow imports from sibling directories
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import streamlit as st
 import yfinance as yf
 import numpy as np
