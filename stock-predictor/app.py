@@ -199,6 +199,7 @@ with st.container():
                     st.pyplot(fig)
                     fig.savefig(plot_path)
                     st.info(f"Plot saved to {plot_path}")
+                    plt.close(fig)  # Close the figure to free memory
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
