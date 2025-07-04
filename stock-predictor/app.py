@@ -21,8 +21,9 @@ st.set_page_config(page_title="Stock Price Predictor", layout="wide")
 # --- Header ---
 with st.container():
     st.title("LSTM Stock Price Predictor")
-    st.write("Enter a valid stock ticker from Yahoo Finance (e.g., 'RELIANCE.NS', 'TATAMOTORS.NS', 'ADANIENT.NS').")
+    st.write("Select a stock from the list, or enter a custom ticker from Yahoo Finance (e.g., 'RELIANCE.NS', 'TATAMOTORS.NS').")
     st.write("The model will be trained live if a pre-trained version for the selected parameters isn't available. This might take a few minutes.")
+    
 
 # --- 1. LSTM Model Definition ---
 class LSTMModel(nn.Module):
@@ -69,7 +70,11 @@ with st.container():
         batch_size = st.sidebar.select_slider("Batch Size", options=[16, 32, 64, 128], value=32)
         learning_rate = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.001, 0.01, 0.1], value=0.001)
 
-    ticker = st.text_input("Enter Stock Ticker:", "RELIANCE.NS").upper()
+    ticker_list = ["", "RELIANCE.NS", "TATAMOTORS.NS", "SBIN.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS"]
+    selected_ticker = st.selectbox("Select Stock Ticker:", ticker_list)
+    custom_ticker = st.text_input("Or Enter Custom Ticker:").upper()
+
+    ticker = custom_ticker if custom_ticker else selected_ticker
     predict_button = st.button("Predict")
 
     if predict_button and ticker:
@@ -82,10 +87,10 @@ with st.container():
                 plot_name = model_name.replace('.pth', '.png')
                 plot_path = get_plot_path(ticker, plot_name)
 
-                # --- 5. Data Fetching and Preprocessing ---
+                # --- 5. Data Fetching and Preprocessing --
                 @st.cache_data
                 def load_data(ticker_symbol):
-                    end_date = datetime.now()
+                    end_date = "2025-07-02"
                     start_date = end_date - timedelta(days=10 * 365) # 10 years of data
                     data = yf.download(ticker_symbol, start=start_date, end=end_date)
                     if data.empty:
