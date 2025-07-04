@@ -21,7 +21,7 @@ st.set_page_config(page_title="Stock Price Predictor", layout="wide")
 # --- Header ---
 with st.container():
     st.title("LSTM Stock Price Predictor")
-    st.write("Enter a valid stock ticker from Yahoo Finance (e.g., 'RELIANCE.NS', 'AAPL', 'TSLA').")
+    st.write("Enter a valid stock ticker from Yahoo Finance (e.g., 'RELIANCE.NS', 'TATAMOTORS.NS', 'ADANIENT.NS').")
     st.write("The model will be trained live if a pre-trained version for the selected parameters isn't available. This might take a few minutes.")
 
 # --- 1. LSTM Model Definition ---
@@ -34,11 +34,17 @@ class LSTMModel(nn.Module):
 
     def forward(self, input_seq):
         lstm_out, _ = self.lstm(input_seq)
-        # We only want the output of the last time step
         predictions = self.linear(lstm_out[:, -1, :])
         return predictions
 
-# --- 2. Main Content ---
+# --- 2. Evaluation Metrics ---
+def get_metrics(actual, predicted):
+    rmse = np.sqrt(np.mean((predicted - actual) ** 2))
+    mape = np.mean(np.abs((actual - predicted) / actual)) * 100
+    smape = np.mean(2 * np.abs(predicted - actual) / (np.abs(actual) + np.abs(predicted))) * 100
+    return rmse, mape, smape
+
+# --- 3. Main Content ---
 with st.container():
     st.sidebar.header("Hyperparameter Tuning")
     use_default_hyperparameters = st.sidebar.checkbox("Use Default Hyperparameters", True)
@@ -69,14 +75,14 @@ with st.container():
     if predict_button and ticker:
         with st.spinner(f"Running prediction for {ticker}... This may take a moment."):
             try:
-                # --- 3. Setup and Configuration ---
+                # --- 4. Setup and Configuration ---
                 create_ticker_dirs(ticker)
                 model_name = f"{ticker}_s{seq_length}_h{hidden_layer_size}_e{epochs}_b{batch_size}_lr{learning_rate}.pth"
                 model_path = get_model_path(ticker, model_name)
                 plot_name = model_name.replace('.pth', '.png')
                 plot_path = get_plot_path(ticker, plot_name)
 
-                # --- 4. Data Fetching and Preprocessing ---
+                # --- 5. Data Fetching and Preprocessing ---
                 @st.cache_data
                 def load_data(ticker_symbol):
                     end_date = datetime.now()
@@ -106,33 +112,37 @@ with st.container():
                     FEATURES = ['Close', 'Volume', 'Open', 'High', 'Low', 'SMA', 'EMA', 'RSI', 'Day_of_week', 'Month']
                     INPUT_SIZE = len(FEATURES)
                     
-                    data_to_scale = df[FEATURES].values
-                    scaler = MinMaxScaler(feature_range=(-1, 1))
-                    scaled_data = scaler.fit_transform(data_to_scale)
-                    
-                    # We need a separate scaler for the 'Close' price to inverse transform later
-                    close_price_scaler = MinMaxScaler(feature_range=(-1, 1))
-                    close_price_scaler.fit(df[['Close']])
+                    # --- 6. Train-Test Split ---
+                    test_data_size = int(len(df) * 0.2)
+                    train_data_df = df[:-test_data_size]
+                    test_data_df = df[-test_data_size:]
 
+                    # --- 7. Scaling ---
+                    scaler = MinMaxScaler(feature_range=(-1, 1))
+                    train_data_scaled = scaler.fit_transform(train_data_df[FEATURES].values)
+                    test_data_scaled = scaler.transform(test_data_df[FEATURES].values)
+
+                    close_price_scaler = MinMaxScaler(feature_range=(-1, 1))
+                    close_price_scaler.fit(train_data_df[['Close']])
 
                     def create_inout_sequences(input_data, seq_len):
                         inout_seq = []
                         L = len(input_data)
                         for i in range(L - seq_len):
                             train_seq = input_data[i:i + seq_len]
-                            train_label = input_data[i + seq_len:i + seq_len + 1, 0] # Target is the 'Close' price
+                            train_label = input_data[i + seq_len:i + seq_len + 1, 0]
                             inout_seq.append((train_seq, train_label))
                         return inout_seq
 
-                    sequences = create_inout_sequences(scaled_data, seq_length)
-                    
-                    # --- 5. Model Training or Loading ---
+                    train_sequences = create_inout_sequences(train_data_scaled, seq_length)
+                    test_sequences = create_inout_sequences(test_data_scaled, seq_length)
+
+                    # --- 8. Model Training or Loading ---
                     model = LSTMModel(INPUT_SIZE, hidden_layer_size)
 
                     if not model_exists(model_path):
-                        st.info(f"No pre-trained model found for {ticker} with these parameters. Training a new model...")
-                        
-                        train_data = TensorDataset(torch.FloatTensor([s[0] for s in sequences]), torch.FloatTensor([s[1] for s in sequences]))
+                        st.info(f"No pre-trained model found for {ticker}. Training a new model...")
+                        train_data = TensorDataset(torch.FloatTensor([s[0] for s in train_sequences]), torch.FloatTensor([s[1] for s in train_sequences]))
                         train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
                         loss_function = nn.MSELoss()
@@ -160,38 +170,43 @@ with st.container():
                         st.success(f"Loading pre-trained model for {ticker} from {model_path}")
                         model.load_state_dict(torch.load(model_path))
 
-                    # --- 6. Prediction ---
+                    # --- 9. Prediction and Evaluation ---
                     model.eval()
                     
-                    # Predict on the entire dataset for plotting
-                    full_data_tensor = torch.FloatTensor([s[0] for s in sequences]).view(-1, seq_length, INPUT_SIZE)
+                    test_inputs = torch.FloatTensor([s[0] for s in test_sequences])
                     with torch.no_grad():
-                        test_predictions = model(full_data_tensor).numpy()
+                        test_predictions_scaled = model(test_inputs).numpy()
 
-                    # Inverse transform predictions
-                    actual_predictions = close_price_scaler.inverse_transform(test_predictions)
-                    
-                    # Get the last sequence to predict the next day
-                    last_sequence = torch.FloatTensor(scaled_data[-seq_length:]).view(1, seq_length, INPUT_SIZE)
+                    actual_predictions = close_price_scaler.inverse_transform(test_predictions_scaled)
+                    actuals = test_data_df['Close'].values[seq_length:]
+
+                    rmse, mape, smape = get_metrics(actuals, actual_predictions.flatten())
+
+                    full_scaled_data = scaler.transform(df[FEATURES].values)
+                    last_sequence = torch.FloatTensor(full_scaled_data[-seq_length:]).view(1, seq_length, INPUT_SIZE)
                     with torch.no_grad():
                         next_day_prediction_scaled = model(last_sequence)
                     
                     next_day_prediction = close_price_scaler.inverse_transform(next_day_prediction_scaled.numpy())
                     
                     st.subheader(f"Predicted Close Price for next trading day:")
-                    st.metric(label=f"{ticker}", value=f"${next_day_prediction[0][0]:.2f}")
+                    st.metric(label=f"{ticker}", value=f"₹{next_day_prediction[0][0]:.2f}")
 
-                    # --- 7. Plotting ---
-                    st.subheader("Actual vs. Predicted Prices")
-                    
-                    actuals = df['Close'].values[seq_length:]
-                    
+                    st.subheader("Model Performance on Unseen Test Data")
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("RMSE", f"₹{rmse:.2f}")
+                    col2.metric("MAPE", f"{mape:.2f}%")
+                    col3.metric("SMAPE", f"{smape:.2f}%")
+
+                    # --- 10. Plotting ---
+                    plot_index = test_data_df.index[seq_length:]
+
                     fig, ax = plt.subplots(figsize=(12, 6))
-                    ax.plot(df.index[seq_length:], actuals, label='Actual Price', color='blue')
-                    ax.plot(df.index[seq_length:], actual_predictions, label='Predicted Price', color='red', linestyle='--')
-                    ax.set_title(f'{ticker} Price Prediction')
+                    ax.plot(plot_index, actuals, label='Actual Price', color='blue')
+                    ax.plot(plot_index, actual_predictions, label='Predicted Price', color='red', linestyle='--')
+                    ax.set_title(f'{ticker} Price Prediction on Test Set')
                     ax.set_xlabel('Date')
-                    ax.set_ylabel('Price (USD)')
+                    ax.set_ylabel('Price (INR)')
                     ax.legend()
                     ax.grid(True)
                     plt.tight_layout()
@@ -199,7 +214,7 @@ with st.container():
                     st.pyplot(fig)
                     fig.savefig(plot_path)
                     st.info(f"Plot saved to {plot_path}")
-                    plt.close(fig)  # Close the figure to free memory
+                    plt.close(fig)
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
@@ -212,4 +227,3 @@ with st.container():
     st.header("Disclaimer")
     st.write("This is a tool for educational purposes and not financial advice. Always conduct your own thorough research before making any investment decisions.")
     st.write("Stock market predictions are inherently uncertain, and past performance is not indicative of future results.")
-
