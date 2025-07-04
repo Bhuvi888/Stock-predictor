@@ -118,11 +118,11 @@ with st.container():
                     test_data_df = df[-test_data_size:]
 
                     # --- 7. Scaling ---
-                    scaler = MinMaxScaler(feature_range=(-1, 1))
+                    scaler = MinMaxScaler(feature_range=(0, 1))
                     train_data_scaled = scaler.fit_transform(train_data_df[FEATURES].values)
                     test_data_scaled = scaler.transform(test_data_df[FEATURES].values)
 
-                    close_price_scaler = MinMaxScaler(feature_range=(-1, 1))
+                    close_price_scaler = MinMaxScaler(feature_range=(0, 1))
                     close_price_scaler.fit(train_data_df[['Close']])
 
                     def create_inout_sequences(input_data, seq_len):

@@ -147,7 +147,7 @@ for TICKER in TICKERS:
     plt.plot(plot_index, y_test_inv, label='Actual Price')
     plt.plot(plot_index, y_pred_inv, label='Predicted Price')
     plt.legend()
-    plot_filename = f"{TICKER}_h{HIDDEN_LAYER_SIZE}_e{EPOCHS}_b{BATCH_SIZE}.png"
+    plot_filename = f"{TICKER}_h{HIDDEN_LAYER_SIZE}_e{EPOCHS}_b{BATCH_SIZE}_0_1_scaling.png"
     plot_path = os.path.join(PLOTS_DIR, TICKER, plot_filename)
     plt.savefig(plot_path)
     plt.close() # Close the plot to free memory
